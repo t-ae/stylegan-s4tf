@@ -7,6 +7,9 @@ struct DBlock: Layer {
     
     var avgPool = AvgPool2D<Float>(poolSize: (2, 2), strides: (2, 2))
     
+    @noDerivative
+    let blur: Blur3x3
+    
     init(inputChannels: Int, outputChannels: Int) {
         let stride = Config.useFusedScale ? 2 : 1
         
@@ -19,12 +22,14 @@ struct DBlock: Layer {
                                 kernelSize: (3, 3),
                                 strides: (stride, stride),
                                 activation: lrelu)
+        blur = Blur3x3(channels: outputChannels)
     }
     
     @differentiable
     func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
         var x = input
         x = conv1(x)
+        x = blur(x)
         x = conv2(x)
         if !Config.useFusedScale {
             x = avgPool(x)
