@@ -8,8 +8,8 @@ public func lrelu(_ x: Tensor<Float>) -> Tensor<Float> {
 
 @differentiable(wrt: x)
 public func pixelNormalization(_ x: Tensor<Float>, epsilon: Float = 1e-8) -> Tensor<Float> {
-    let x2 = x * x
-    let mean = x2.mean(alongAxes: 3)
+    // 2D or 4D
+    let mean = x.squared().mean(alongAxes: x.shape.count-1)
     return x * rsqrt(mean + epsilon)
 }
 
