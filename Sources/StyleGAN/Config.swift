@@ -10,6 +10,7 @@ public enum Config {
     public static let maxLevel = 7
     
     public static let useFusedScale = true
+    public static let normalizeLatent = true
     
     public static let loss = NonSaturatingLoss()
     
@@ -20,7 +21,7 @@ public enum Config {
     // minibatch size for each level
     public static let minibatchSizeSchedule = [128, 64, 64, 32, 32, 16, 16]
     
-    public static let numImagesPerPhase = 800_000
+    public static let numImagesPerPhase = 100//800_000
     
     public static let imageDirectory = URL(fileURLWithPath: "./images")
     public static let tensorboardOutputDirectory = URL(fileURLWithPath: "./tensorboard")

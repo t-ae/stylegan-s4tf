@@ -1,7 +1,7 @@
 import Foundation
 import TensorFlow
 
-struct DiscriminatorBlock: Layer {
+struct DBlock: Layer {
     var conv1: EqualizedConv2D
     var conv2: EqualizedConv2D
     
@@ -33,7 +33,7 @@ struct DiscriminatorBlock: Layer {
     }
 }
 
-struct DiscriminatorLastBlock: Layer {
+struct DLastBlock: Layer {
     var conv: EqualizedConv2D
     var dense1: EqualizedDense
     var dense2: EqualizedDense
@@ -67,9 +67,9 @@ struct DiscriminatorLastBlock: Layer {
 
 public struct Discriminator: Layer {
     
-    var lastBlock = DiscriminatorLastBlock()
+    var lastBlock = DLastBlock()
     
-    var blocks: [DiscriminatorBlock] = []
+    var blocks: [DBlock] = []
     
     var fromRGB1 = EqualizedConv2D(inputChannels: 3, outputChannels: 1, kernelSize: (1, 1)) // dummy at first
     var fromRGB2 = EqualizedConv2D(inputChannels: 3, outputChannels: 256, kernelSize: (1, 1))
@@ -123,7 +123,7 @@ public struct Discriminator: Layer {
         let blockCount = blocks.count
         let io = Discriminator.ioChannels[blockCount]
         
-        blocks.append(DiscriminatorBlock(inputChannels: io.0,outputChannels: io.1))
+        blocks.append(DBlock(inputChannels: io.0,outputChannels: io.1))
         
         fromRGB1 = fromRGB2
         fromRGB2 = EqualizedConv2D(inputChannels: 3, outputChannels: io.0, kernelSize: (1, 1))

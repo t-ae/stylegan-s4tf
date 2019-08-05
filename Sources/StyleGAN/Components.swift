@@ -23,11 +23,12 @@ public struct Blur3x3: ParameterlessLayer {
     @noDerivative
     let filter: Tensor<Float>
     
-    public init() {
+    public init(channels: Int) {
         var f = Tensor<Float>([1, 2, 1])
         f = f.reshaped(to: [1, -1]) * f.reshaped(to: [-1, 1])
         f /= f.sum()
         f = f.reshaped(to: [3, 3, 1, 1])
+        f = f.tiled(multiples: Tensor([1, 1, Int32(channels), 1]))
         self.filter = f
     }
     
@@ -44,26 +45,33 @@ public func instanceNorm2D(_ x: Tensor<Float>) -> Tensor<Float> {
     return (x - mean) * rsqrt(variance + 1e-8)
 }
 
-public struct AdaIN: Layer {
-    public struct Input: Differentiable {
+struct AdaIN: Layer {
+    struct Input: Differentiable {
         var x: Tensor<Float>
-        var w: Tensor<Float> //
+        var w: Tensor<Float>
     }
-    public var scaleTransform: EqualizedDense
-    public var biasTransform: EqualizedDense
     
-    public init(wsize: Int, size: Int) {
+    var scaleTransform: EqualizedDense
+    var biasTransform: EqualizedDense
+    
+    init(size: Int, wsize: Int) {
         scaleTransform = EqualizedDense(inputSize: wsize, outputSize: size, gain: 1)
         biasTransform = EqualizedDense(inputSize: wsize, outputSize: size, gain: 1)
     }
     
     @differentiable
-    public func callAsFunction(_ input: AdaIN.Input) -> Tensor<Float> {
+    func callAsFunction(_ input: Input) -> Tensor<Float> {
         let batchSize = input.x.shape[0]
         let x = instanceNorm2D(input.x)
         let scale = scaleTransform(input.w).reshaped(to: [batchSize, 1, 1, -1])
         let bias = biasTransform(input.w).reshaped(to: [batchSize, 1, 1, -1])
         return x * scale + bias
+    }
+    
+    // Directly calling `Input.init` has problem?
+    @differentiable
+    static func makeInput(x: Tensor<Float>, w: Tensor<Float>) -> Input {
+        Input(x: x, w: w)
     }
 }
 
