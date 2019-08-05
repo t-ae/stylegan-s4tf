@@ -19,6 +19,71 @@ public func lerp(_ a: Tensor<Float>, _ b: Tensor<Float>, rate: Float) -> Tensor<
     return a + rate * (b - a)
 }
 
+public struct Blur3x3: ParameterlessLayer {
+    @noDerivative
+    let filter: Tensor<Float>
+    
+    public init() {
+        var f = Tensor<Float>([1, 2, 1])
+        f = f.reshaped(to: [1, -1]) * f.reshaped(to: [-1, 1])
+        f /= f.sum()
+        f = f.reshaped(to: [3, 3, 1, 1])
+        self.filter = f
+    }
+    
+    @differentiable
+    public func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+        depthwiseConv2D(input, filter: filter, strides: (1, 1, 1, 1), padding: .same)
+    }
+}
+
+@differentiable
+public func instanceNorm2D(_ x: Tensor<Float>) -> Tensor<Float> {
+    let mean = x.mean(alongAxes: 1, 2)
+    let std = x.standardDeviation(alongAxes: 1, 2)
+    return (x - mean) / std
+}
+
+public struct AdaIN: Layer {
+    public struct Input: Differentiable {
+        var x: Tensor<Float>
+        var w: Tensor<Float> //
+    }
+    public var scaleTransform: EqualizedDense
+    public var biasTransform: EqualizedDense
+    
+    public init(wsize: Int, size: Int) {
+        scaleTransform = EqualizedDense(inputSize: wsize, outputSize: size, gain: 1)
+        biasTransform = EqualizedDense(inputSize: wsize, outputSize: size, gain: 1)
+    }
+    
+    @differentiable
+    public func callAsFunction(_ input: AdaIN.Input) -> Tensor<Float> {
+        let batchSize = input.x.shape[0]
+        let x = instanceNorm2D(input.x)
+        let scale = scaleTransform(input.w).reshaped(to: [batchSize, 1, 1, -1])
+        let bias = biasTransform(input.w).reshaped(to: [batchSize, 1, 1, -1])
+        return x * scale + bias
+    }
+}
+
+public struct NoiseLayer: Layer {
+    public var noiseScale: Tensor<Float>
+    
+    public init(channels: Int) {
+        noiseScale = Tensor(zeros: [1, 1, 1, channels])
+    }
+    
+    @differentiable
+    public func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+        let height = input.shape[1]
+        let width = input.shape[2]
+        let noise = Tensor<Float>(randomNormal: [1, height, width, 1])
+        
+        return input + noise * noiseScale
+    }
+}
+
 public struct EqualizedDense: Layer {
     public var dense: Dense<Float>
     @noDerivative public let scale: Tensor<Float>
