@@ -48,8 +48,12 @@ public struct Generator: Layer {
         if training {
             wAverage.value = lerp(w.mean(alongAxes: 0), wAverage.value, rate: wAverageBeta)
         }
+
+        return w.reshaped(to: [1, 1, batchSize, Config.wsize])
+            .tiled(multiples: Tensor([Int32(level), 2, 1, 1]))
         
         // Style mixing
+        /*
         let z2 = sampleNoise(size: batchSize)
         let w2 = mapping(z2)
         
@@ -75,6 +79,7 @@ public struct Generator: Layer {
         }
         
         return mixed.reshaped(to: [level, 2, batchSize, Config.wsize])
+        */
     }
     
     public mutating func grow() {
