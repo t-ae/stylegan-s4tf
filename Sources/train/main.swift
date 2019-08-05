@@ -85,6 +85,11 @@ enum Phase {
 var phase: Phase = .stabilizing
 var imageCount = 0
 
+// Grow to start level
+for _ in 1..<Config.startLevel {
+    grow()
+}
+
 for step in 1... {
     if phase == .fading {
         setAlpha(Float(imageCount) / Float(Config.numImagesPerPhase))
