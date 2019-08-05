@@ -39,7 +39,7 @@ struct DiscriminatorLastBlock: Layer {
     var dense2: EqualizedDense
     
     public init() {
-        conv = EqualizedConv2D(inputChannels: 257,
+        conv = EqualizedConv2D(inputChannels: 256,
                                outputChannels: 256,
                                kernelSize: (4, 4),
                                padding: .valid,
@@ -57,7 +57,6 @@ struct DiscriminatorLastBlock: Layer {
     public func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
         let batchSize = input.shape[0]
         var x = input
-        x = minibatchStdConcat(x)
         x = conv(x)
         x = x.reshaped(to: [batchSize, -1])
         x = dense1(x)
