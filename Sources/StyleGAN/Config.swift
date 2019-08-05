@@ -11,6 +11,7 @@ public enum Config {
     public static let maxLevel = 7
     
     public static let useFusedScale = true
+    public static let useBlur = false
     public static let normalizeLatent = true
     
     public static let loss = NonSaturatingLoss()

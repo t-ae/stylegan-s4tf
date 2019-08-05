@@ -29,7 +29,9 @@ struct DBlock: Layer {
     func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
         var x = input
         x = conv1(x)
-        x = blur(x)
+        if Config.useBlur {
+            x = blur(x)
+        }
         x = conv2(x)
         if !Config.useFusedScale {
             x = avgPool(x)

@@ -86,7 +86,9 @@ struct SynthesisBlock: Layer {
         x = upsample(x)
         
         x = conv1(x)
-        x = blur(x)
+        if Config.useBlur {
+            x = blur(x)
+        }
         x = noise1(x)
         x = lrelu(x)
         x = adaIN1(AdaIN.makeInput(x: x, w: input.ws[0]))
