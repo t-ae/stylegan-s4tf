@@ -7,7 +7,7 @@ public enum Config {
     
     // Level 1 generates 4x4 images.
     // Level 7 generates 256x256 images.
-    public static let startLevel = 2
+    public static let startLevel = 5
     public static let maxLevel = 7
     
     public static let useFusedScale = true

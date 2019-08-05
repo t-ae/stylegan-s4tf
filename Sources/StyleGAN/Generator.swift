@@ -60,19 +60,18 @@ public struct Generator: Layer {
             mask[cutoff..., batch] = Tensor(ones: [size, 1])
         }
         // [level*2, batchSize, wsize]
-        let mixed = Tensor<Float>(1 - mask) * w + Tensor<Float>(mask) * w2
+        var mixed = Tensor<Float>(1 - mask) * w + Tensor<Float>(mask) * w2
         
         // truncation trick
         if !training {
-            // TODO: 
-//            let psi: Float = 0.7
-//            if mixed.shape[0] > 8 {
-//                var mask = Tensor<Float>(ones: mixed.shape)
-//                mask[8...] *= psi
-//
-//                mixed = mixed * mask
-//                mixed = mixed + (1-mask) * wAverage.value
-//            }
+            let psi: Float = 0.7
+            if mixed.shape[0] > 8 {
+                var rates = Tensor<Float>(zeros: mixed.shape)
+                rates[8...] *= 1-psi
+
+                mixed = mixed * (1-rates)
+                mixed = mixed + rates * wAverage.value
+            }
         }
         
         return mixed.reshaped(to: [level, 2, batchSize, Config.wsize])
