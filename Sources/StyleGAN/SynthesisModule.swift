@@ -30,12 +30,16 @@ struct SynthesisFirstBlock: Layer {
         // input: [2, batchSize, wsize]
         let batchSize = input.shape[1]
         var x = baseImage.tiled(multiples: Tensor<Int32>([Int32(batchSize), 1, 1, 1]))
-        x = noise1(x)
+        if Config.useNoise {
+            x = noise1(x)
+        }
         x = lrelu(x)
         x = adaIN1(AdaIN.makeInput(x: x, w: input[0]))
         
         x = conv(x)
-        x = noise2(x)
+        if Config.useNoise {
+            x = noise2(x)
+        }
         x = lrelu(x)
         x = adaIN2(AdaIN.makeInput(x: x, w: input[1]))
         
@@ -89,12 +93,16 @@ struct SynthesisBlock: Layer {
         if Config.useBlur {
             x = blur(x)
         }
-        x = noise1(x)
+        if Config.useNoise {
+            x = noise1(x)
+        }
         x = lrelu(x)
         x = adaIN1(AdaIN.makeInput(x: x, w: input.ws[0]))
         
         x = conv2(x)
-        x = noise2(x)
+        if Config.useNoise {
+            x = noise2(x)
+        }
         x = lrelu(x)
         x = adaIN2(AdaIN.makeInput(x: x, w: input.ws[1]))
         
