@@ -15,13 +15,14 @@ public enum Config {
     public static let loss = NonSaturatingLoss()
     
     // MARK: Training settings
-    public static let generatorLearningRate: Float = 1e-3
+    public static let mappingLearningRate: Float = 1e-5
+    public static let synthesisLearningRate: Float = 1e-3
     public static let discriminatorLearningRate: Float = 1e-3
     
     // minibatch size for each level
     public static let minibatchSizeSchedule = [128, 64, 64, 32, 32, 16, 16]
     
-    public static let numImagesPerPhase = 100//800_000
+    public static let numImagesPerPhase = 800_000
     
     public static let imageDirectory = URL(fileURLWithPath: "./images")
     public static let tensorboardOutputDirectory = URL(fileURLWithPath: "./tensorboard")

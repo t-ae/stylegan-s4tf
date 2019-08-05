@@ -7,15 +7,17 @@ import StyleGAN
 var generator = Generator()
 var discriminator = Discriminator()
 
-var optG = Adam(for: generator, learningRate: 1e-3, beta1: 0)
-var optD = Adam(for: discriminator, learningRate: 1e-3, beta1: 0)
+var optMap = Adam(for: generator.mapping, learningRate: Config.mappingLearningRate, beta1: 0)
+var optSynth = Adam(for: generator.synthesis, learningRate: Config.synthesisLearningRate, beta1: 0)
+var optDis = Adam(for: discriminator, learningRate: Config.discriminatorLearningRate, beta1: 0)
 
 func grow() {
     generator.grow()
     discriminator.grow()
     
-    optG = Adam(for: generator, learningRate: Config.generatorLearningRate, beta1: 0)
-    optD = Adam(for: discriminator, learningRate: Config.discriminatorLearningRate, beta1: 0)
+    optMap = Adam(for: generator.mapping, learningRate: Config.mappingLearningRate, beta1: 0)
+    optSynth = Adam(for: generator.synthesis, learningRate: Config.synthesisLearningRate, beta1: 0)
+    optDis = Adam(for: discriminator, learningRate: Config.discriminatorLearningRate, beta1: 0)
 }
 
 func setAlpha(_ alpha: Float) {
@@ -36,7 +38,9 @@ func train(minibatch: Tensor<Float>) -> (lossG: Tensor<Float>, lossD: Tensor<Flo
         let logits = discriminator(images)
         return Config.loss.generatorLoss(fake: logits)
     }
-    optG.update(&generator.allDifferentiableVariables, along: 𝛁generator)
+    optMap.update(&generator.mapping.allDifferentiableVariables, along: 𝛁generator.mapping)
+    optSynth.update(&generator.synthesis.allDifferentiableVariables, along: 𝛁generator.synthesis)
+    
     
     // Update discriminator
     let noise2 = sampleNoise(size: minibatchSize)
@@ -46,8 +50,8 @@ func train(minibatch: Tensor<Float>) -> (lossG: Tensor<Float>, lossD: Tensor<Flo
         let fakeLogits = discriminator(fakeImages)
         return Config.loss.discriminatorLoss(real: realLogits, fake: fakeLogits)
     }
-    optD.update(&discriminator.allDifferentiableVariables, along: 𝛁discriminator)
-    
+    optDis.update(&discriminator.allDifferentiableVariables, along: 𝛁discriminator)
+
     return (lossG, lossD)
 }
 
