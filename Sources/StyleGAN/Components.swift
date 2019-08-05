@@ -40,8 +40,8 @@ public struct Blur3x3: ParameterlessLayer {
 @differentiable
 public func instanceNorm2D(_ x: Tensor<Float>) -> Tensor<Float> {
     let mean = x.mean(alongAxes: 1, 2)
-    let std = x.standardDeviation(alongAxes: 1, 2)
-    return (x - mean) / std
+    let variance = x.variance(alongAxes: 1, 2)
+    return (x - mean) * rsqrt(variance + 1e-8)
 }
 
 public struct AdaIN: Layer {
