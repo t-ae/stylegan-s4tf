@@ -53,7 +53,6 @@ public struct Generator: Layer {
             .tiled(multiples: Tensor([Int32(level), 2, 1, 1]))
         
         // Style mixing
-        /*
         let z2 = sampleNoise(size: batchSize)
         let w2 = mapping(z2)
         
@@ -79,7 +78,6 @@ public struct Generator: Layer {
         }
         
         return mixed.reshaped(to: [level, 2, batchSize, Config.wsize])
-        */
     }
     
     public mutating func grow() {
