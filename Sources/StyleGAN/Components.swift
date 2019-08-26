@@ -64,7 +64,7 @@ struct AdaIN: Layer {
         let x = instanceNorm2D(input.x)
         let scale = scaleTransform(input.w).reshaped(to: [batchSize, 1, 1, -1])
         let bias = biasTransform(input.w).reshaped(to: [batchSize, 1, 1, -1])
-        return x * scale + bias
+        return x * (scale + 1) + bias
     }
     
     // Directly calling `Input.init` has problem?
@@ -89,6 +89,22 @@ struct NoiseLayer: Layer {
         
         return input + noise * noiseScale
     }
+}
+
+@differentiable(vjp: vjpResize2xBilinear)
+public func resize2xBilinear(images: Tensor<Float>) -> Tensor<Float> {
+    let newHeight = images.shape[1] * 2
+    let newWidth = images.shape[2] * 2
+    return Raw.resizeBilinear(images: images,
+                              size: Tensor([Int32(newHeight), Int32(newWidth)]),
+                              alignCorners: true)
+}
+
+public func vjpResize2xBilinear(images: Tensor<Float>) -> (Tensor<Float>, (Tensor<Float>)->Tensor<Float>) {
+    let resized = resize2xBilinear(images: images)
+    return (resized, { v in
+        Raw.resizeBilinearGrad(grads: v, originalImage: images, alignCorners: true)
+    })
 }
 
 public struct EqualizedDense: Layer {

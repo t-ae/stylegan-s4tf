@@ -64,8 +64,6 @@ struct SynthesisBlock: Layer {
     
     @noDerivative let blur: Blur3x3
     
-    var upsample = UpSampling2D<Float>(size: 2)
-    
     init(inputSize: Int, outputSize: Int) {
         conv1 = EqualizedConv2D(inputChannels: inputSize,
                                 outputChannels: outputSize,
@@ -87,7 +85,7 @@ struct SynthesisBlock: Layer {
     func callAsFunction(_ input: Input) -> Tensor<Float> {
         var x = input.x
         
-        x = upsample(x)
+        x = resize2xBilinear(images: x)
         
         x = conv1(x)
         if Config.useBlur {
@@ -126,8 +124,6 @@ public struct SynthesisModule: Layer {
                                  activation: identity,
                                  gain: 1)
     
-    public var upsample = UpSampling2D<Float>(size: 2)
-    
     @noDerivative public internal(set) var level: Int = 1
     @noDerivative public var alpha: Float = 1
     
@@ -153,10 +149,11 @@ public struct SynthesisModule: Layer {
         
         var x1 = x
         x1 = toRGB1(x1)
-        x1 = upsample(x1)
+        x1 = resize2xBilinear(images: x1)
         
         var x2 = blocks[level-2](.init(x: x, ws: ws[0]))
         x2 = toRGB2(x2)
+        
         return lerp(x1, x2, rate: alpha)
     }
     
