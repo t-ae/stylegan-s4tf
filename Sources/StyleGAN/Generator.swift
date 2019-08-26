@@ -75,4 +75,11 @@ public struct Generator: Layer {
     public mutating func grow() {
         synthesis.grow()
     }
+    
+    public func getHistogramWeights() -> [String: Tensor<Float>] {
+        let map = mapping.getHistogramWeights()
+        let syn = synthesis.getHistogramWeights()
+        
+        return map.merging(syn) { a, b in a }
+    }
 }

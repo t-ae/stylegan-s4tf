@@ -28,4 +28,15 @@ public struct MappingModule: Layer {
         }
         return x.sequenced(through: dense1, dense2, dense3, dense4, dense5, dense6)
     }
+    
+    public func getHistogramWeights() -> [String: Tensor<Float>] {
+        return [
+            "map/dense1": dense1.weight,
+            "map/dense2": dense2.weight,
+            "map/dense3": dense3.weight,
+            "map/dense4": dense4.weight,
+            "map/dense5": dense5.weight,
+            "map/dense6": dense6.weight,
+        ]
+    }
 }

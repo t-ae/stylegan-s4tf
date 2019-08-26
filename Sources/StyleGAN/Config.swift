@@ -15,7 +15,7 @@ public enum Config {
     public static let useNoise = false
     public static let normalizeLatent = true
     
-    public static let loss = NonSaturatingLoss()
+    public static let loss: LossType = .lsgan
     
     // MARK: Training settings
     public static let mappingLearningRate: Float = 1e-5

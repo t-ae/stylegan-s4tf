@@ -7,17 +7,17 @@ import StyleGAN
 var generator = Generator()
 var discriminator = Discriminator()
 
-var optMap = Adam(for: generator.mapping, learningRate: Config.mappingLearningRate, beta1: 0)
-var optSynth = Adam(for: generator.synthesis, learningRate: Config.synthesisLearningRate, beta1: 0)
-var optDis = Adam(for: discriminator, learningRate: Config.discriminatorLearningRate, beta1: 0)
+var optMap = Adam(for: generator.mapping, learningRate: Config.mappingLearningRate, beta1: 0, beta2: 0.99)
+var optSynth = Adam(for: generator.synthesis, learningRate: Config.synthesisLearningRate, beta1: 0, beta2: 0.99)
+var optDis = Adam(for: discriminator, learningRate: Config.discriminatorLearningRate, beta1: 0, beta2: 0.99)
 
 func grow() {
     generator.grow()
     discriminator.grow()
     
-    optMap = Adam(for: generator.mapping, learningRate: Config.mappingLearningRate, beta1: 0)
-    optSynth = Adam(for: generator.synthesis, learningRate: Config.synthesisLearningRate, beta1: 0)
-    optDis = Adam(for: discriminator, learningRate: Config.discriminatorLearningRate, beta1: 0)
+    optMap = Adam(for: generator.mapping, learningRate: Config.mappingLearningRate, beta1: 0, beta2: 0.99)
+    optSynth = Adam(for: generator.synthesis, learningRate: Config.synthesisLearningRate, beta1: 0, beta2: 0.99)
+    optDis = Adam(for: discriminator, learningRate: Config.discriminatorLearningRate, beta1: 0, beta2: 0.99)
 }
 
 func setAlpha(_ alpha: Float) {
@@ -26,6 +26,8 @@ func setAlpha(_ alpha: Float) {
 }
 
 let imageLoader = try ImageLoader(imageDirectory: Config.imageDirectory)
+
+let loss = Config.loss.createLoss()
 
 func train(minibatch: Tensor<Float>) -> (lossG: Tensor<Float>, lossD: Tensor<Float>){
     Context.local.learningPhase = .training
@@ -36,10 +38,15 @@ func train(minibatch: Tensor<Float>) -> (lossG: Tensor<Float>, lossD: Tensor<Flo
     let (lossG, 𝛁generator) = generator.valueWithGradient { generator ->Tensor<Float> in
         let images = generator(noise1)
         let scores = discriminator(images)
-        return Config.loss.generatorLoss(fake: scores)
+        
+        // update output mean
+        discriminator.outputMean.value = 0.9*discriminator.outputMean.value
+            + 0.1*withoutDerivative(at: scores).mean()
+        
+        return loss.generatorLoss(fake: scores)
     }
-    optMap.update(&generator.mapping.allDifferentiableVariables, along: 𝛁generator.mapping)
-    optSynth.update(&generator.synthesis.allDifferentiableVariables, along: 𝛁generator.synthesis)
+    optMap.update(&generator.mapping, along: 𝛁generator.mapping)
+    optSynth.update(&generator.synthesis, along: 𝛁generator.synthesis)
     
     
     // Update discriminator
@@ -48,9 +55,13 @@ func train(minibatch: Tensor<Float>) -> (lossG: Tensor<Float>, lossD: Tensor<Flo
     let (lossD, 𝛁discriminator) = discriminator.valueWithGradient { discriminator -> Tensor<Float> in
         let realScores = discriminator(minibatch)
         let fakeScores = discriminator(fakeImages)
-        return Config.loss.discriminatorLoss(real: realScores, fake: fakeScores)
+        
+        // update output mean
+        discriminator.outputMean.value = 0.9*discriminator.outputMean.value + 0.1*fakeScores.mean()
+        
+        return loss.discriminatorLoss(real: realScores, fake: fakeScores)
     }
-    optDis.update(&discriminator.allDifferentiableVariables, along: 𝛁discriminator)
+    optDis.update(&discriminator, along: 𝛁discriminator)
 
     return (lossG, lossD)
 }
@@ -78,6 +89,15 @@ func infer(level: Int, step: Int) {
     writer.addImage(tag: "lv\(level)", image: images, globalStep: step)
 }
 
+func addHistograms(step: Int) {
+    for (k, v) in generator.getHistogramWeights() {
+        writer.addHistogram(tag: k, values: v, globalStep: step)
+    }
+    for (k, v) in discriminator.getHistogramWeights() {
+        writer.addHistogram(tag: k, values: v, globalStep: step)
+    }
+}
+
 enum Phase {
     case fading, stabilizing
 }
@@ -89,6 +109,9 @@ var imageCount = 0
 for _ in 1..<Config.startLevel {
     grow()
 }
+
+// Initial histogram
+addHistograms(step: 0)
 
 for step in 1... {
     if phase == .fading {
@@ -111,6 +134,9 @@ for step in 1... {
     
     writer.addScalar(tag: "lv\(level)/lossG", scalar: lossG.scalar!, globalStep: step)
     writer.addScalar(tag: "lv\(level)/lossD", scalar: lossD.scalar!, globalStep: step)
+    if Config.loss == .lsgan {
+        writer.addScalar(tag: "lv\(level)/dout_mean", scalar: discriminator.outputMean.value.scalar!, globalStep: step)
+    }
     
     imageCount += minibatchSize
     
@@ -129,10 +155,14 @@ for step in 1... {
             setAlpha(0)
             grow()
             print("Start fading lv: \(generator.synthesis.level)")
+            
+            infer(level: level, step: step)
+            addHistograms(step: step)
         }
     }
     
     if step.isMultiple(of: Config.numStepsToInfer) {
         infer(level: level, step: step)
+        addHistograms(step: step)
     }
 }

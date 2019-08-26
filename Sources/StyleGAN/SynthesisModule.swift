@@ -186,4 +186,20 @@ public struct SynthesisModule: Layer {
                                  activation: identity,
                                  gain: 1)
     }
+    
+    public func getHistogramWeights() -> [String: Tensor<Float>] {
+        var dict = [
+            "gen\(level)/first.baseImage": firstBlock.baseImage,
+            "gen\(level)/first.conv": firstBlock.conv.filter,
+            "gen\(level)/toRGB1": toRGB1.filter,
+            "gen\(level)/toRGB2": toRGB2.filter,
+        ]
+        
+        for i in 0..<blocks.count {
+            dict["gen\(level)/block\(i).conv1"] = blocks[i].conv1.filter
+            dict["gen\(level)/block\(i).conv2"] = blocks[i].conv2.filter
+        }
+        
+        return dict
+    }
 }

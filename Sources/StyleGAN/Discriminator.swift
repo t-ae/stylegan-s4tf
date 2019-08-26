@@ -1,6 +1,22 @@
 import Foundation
 import TensorFlow
 
+// Add per channel noise
+// https://github.com/tkarras/progressive_growing_of_gans/blob/original-theano-version/network.py#L360-L400
+@differentiable(wrt: x)
+func addNoise(_ x: Tensor<Float>, noiseScale: Float) -> Tensor<Float> {
+    let noiseShape: TensorShape = [1, 1, 1, x.shape[3]]
+    let scale = noiseScale * sqrt(Float(x.shape[3]))
+    let noise = Tensor<Float>(randomNormal: noiseShape) * scale + 1
+    return x * noise
+}
+
+struct DiscriminatorBlockInput: Differentiable {
+    var x: Tensor<Float>
+    @noDerivative
+    var noiseScale: Float
+}
+
 struct DBlock: Layer {
     var conv1: EqualizedConv2D
     var conv2: EqualizedConv2D
@@ -26,12 +42,14 @@ struct DBlock: Layer {
     }
     
     @differentiable
-    func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
-        var x = input
+    func callAsFunction(_ input: DiscriminatorBlockInput) -> Tensor<Float> {
+        var x = input.x
+        x = addNoise(x, noiseScale: input.noiseScale)
         x = conv1(x)
         if Config.useBlur {
             x = blur(x)
         }
+        x = addNoise(x, noiseScale: input.noiseScale)
         x = conv2(x)
         if !Config.useFusedScale {
             x = avgPool(x)
@@ -41,33 +59,37 @@ struct DBlock: Layer {
 }
 
 struct DLastBlock: Layer {
-    var conv: EqualizedConv2D
-    var dense1: EqualizedDense
-    var dense2: EqualizedDense
+    var conv1: EqualizedConv2D
+    var conv2: EqualizedConv2D
+    var dense: EqualizedDense
     
     public init() {
-        conv = EqualizedConv2D(inputChannels: 256,
-                               outputChannels: 256,
-                               kernelSize: (4, 4),
-                               padding: .valid,
-                               activation: lrelu)
-        dense1 = EqualizedDense(inputSize: 256,
-                                outputSize: 128,
+        conv1 = EqualizedConv2D(inputChannels: 256,
+                                outputChannels: 256,
+                                kernelSize: (3, 3),
+                                padding: .same,
                                 activation: lrelu)
-        dense2 = EqualizedDense(inputSize: 128,
-                                outputSize: 1,
-                                activation: identity,
-                                gain: 1)
+        conv2 = EqualizedConv2D(inputChannels: 256,
+                                outputChannels: 256,
+                                kernelSize: (4, 4),
+                                padding: .valid,
+                                activation: lrelu)
+        dense = EqualizedDense(inputSize: 256,
+                               outputSize: 1,
+                               activation: identity,
+                               gain: 1)
     }
     
     @differentiable
-    public func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
-        let batchSize = input.shape[0]
-        var x = input
-        x = conv(x)
+    public func callAsFunction(_ input: DiscriminatorBlockInput) -> Tensor<Float> {
+        var x = input.x
+        let batchSize = x.shape[0]
+        x = addNoise(x, noiseScale: input.noiseScale)
+        x = conv1(x)
+        x = addNoise(x, noiseScale: input.noiseScale)
+        x = conv2(x)
         x = x.reshaped(to: [batchSize, -1])
-        x = dense1(x)
-        x = dense2(x)
+        x = dense(x)
         return x
     }
 }
@@ -88,28 +110,41 @@ public struct Discriminator: Layer {
     @noDerivative
     public var alpha: Float = 1
     
+    // Mean of output for fake images
+    @noDerivative
+    public let outputMean: Parameter<Float> = Parameter(Tensor(0))
+    
     public init() {}
     
     @differentiable
     public func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+        
+        // Described in Appendix B of ProGAN paper
+        let noiseScale: Float
+        if Config.loss == .lsgan {
+            noiseScale = 0.2 * pow(max(outputMean.value.scalar! - 0.5, 0), 2)
+        } else {
+            noiseScale = 0
+        }
+        
         guard level > 1 else {
             // alpha = 1
-            return lastBlock(fromRGB2(input))
+            return lastBlock(DiscriminatorBlockInput(x: fromRGB2(input), noiseScale: noiseScale))
         }
         
         let x1 = fromRGB1(downsample(input))
         var x2 = fromRGB2(input)
         
         let lastIndex = level-2
-        x2 = blocks[lastIndex](x2)
+        x2 = blocks[lastIndex](DiscriminatorBlockInput(x: x2, noiseScale: noiseScale))
         
         var x = lerp(x1, x2, rate: alpha)
         
         for l in (0..<lastIndex).reversed() {
-            x = blocks[l](x)
+            x = blocks[l](DiscriminatorBlockInput(x: x, noiseScale: noiseScale))
         }
         
-        return lastBlock(x)
+        return lastBlock(DiscriminatorBlockInput(x: x, noiseScale: noiseScale))
     }
     
     static let ioChannels = [
@@ -134,5 +169,22 @@ public struct Discriminator: Layer {
         
         fromRGB1 = fromRGB2
         fromRGB2 = EqualizedConv2D(inputChannels: 3, outputChannels: io.0, kernelSize: (1, 1), activation: lrelu)
+    }
+    
+    public func getHistogramWeights() -> [String: Tensor<Float>] {
+        var dict = [
+            "disc\(level)/last.conv1": lastBlock.conv1.filter,
+            "disc\(level)/last.conv2": lastBlock.conv2.filter,
+            "disc\(level)/last.dense": lastBlock.dense.weight,
+            "disc\(level)/fromRGB1": fromRGB1.filter,
+            "disc\(level)/fromRGB2": fromRGB2.filter,
+        ]
+        
+        for i in 0..<blocks.count {
+            dict["disc\(level)/block\(i).conv1"] = blocks[i].conv1.filter
+            dict["disc\(level)/block\(i).conv2"] = blocks[i].conv2.filter
+        }
+        
+        return dict
     }
 }
