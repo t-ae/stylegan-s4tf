@@ -23,7 +23,7 @@ public enum Config {
     public static let discriminatorLearningRate: Float = 1e-3
     
     // minibatch size for each level
-    public static let minibatchSizeSchedule = [128, 64, 64, 32, 32, 16, 16]
+    public static let minibatchSizeSchedule = [16, 16, 16, 16, 16, 16, 16]
     
     public static let numImagesPerPhase = 800_000
     
@@ -32,5 +32,5 @@ public enum Config {
     
     public static let numStepsToInfer = 3_000
     
-    public static let debugPrint = true
+    public static let debugPrint = false
 }
