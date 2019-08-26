@@ -8,10 +8,6 @@ public struct Generator: Layer {
     @noDerivative let wAverageBeta: Float = 0.995
     @noDerivative var wAverage: Parameter<Float>
     
-    public var level: Int {
-        synthesis.level
-    }
-    
     public var alpha: Float {
         get {
             synthesis.alpha
@@ -36,8 +32,7 @@ public struct Generator: Layer {
     
     @differentiable
     func createWs(w: Tensor<Float>) -> Tensor<Float> {
-        // FIXME: Accessing computed property is not differentiable?
-        let level = synthesis.level
+        let level = withoutDerivative(at: synthesis.level)
         
         let batchSize = w.shape[0]
         let training = Context.local.learningPhase == .training
@@ -48,9 +43,6 @@ public struct Generator: Layer {
         if training {
             wAverage.value = lerp(w.mean(alongAxes: 0), wAverage.value, rate: wAverageBeta)
         }
-
-        return w.reshaped(to: [1, 1, batchSize, Config.wsize])
-            .tiled(multiples: Tensor([Int32(level), 2, 1, 1]))
         
         // Style mixing
         let z2 = sampleNoise(size: batchSize)

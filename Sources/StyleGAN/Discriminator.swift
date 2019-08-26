@@ -78,8 +78,8 @@ public struct Discriminator: Layer {
     
     var blocks: [DBlock] = []
     
-    var fromRGB1 = EqualizedConv2D(inputChannels: 3, outputChannels: 1, kernelSize: (1, 1)) // dummy at first
-    var fromRGB2 = EqualizedConv2D(inputChannels: 3, outputChannels: 256, kernelSize: (1, 1))
+    var fromRGB1 = EqualizedConv2D(inputChannels: 1, outputChannels: 1, kernelSize: (1, 1), activation: lrelu) // dummy at first
+    var fromRGB2 = EqualizedConv2D(inputChannels: 3, outputChannels: 256, kernelSize: (1, 1), activation: lrelu)
     
     var downsample = AvgPool2D<Float>(poolSize: (2, 2), strides: (2, 2))
     
@@ -133,6 +133,6 @@ public struct Discriminator: Layer {
         blocks.append(DBlock(inputChannels: io.0,outputChannels: io.1))
         
         fromRGB1 = fromRGB2
-        fromRGB2 = EqualizedConv2D(inputChannels: 3, outputChannels: io.0, kernelSize: (1, 1))
+        fromRGB2 = EqualizedConv2D(inputChannels: 3, outputChannels: io.0, kernelSize: (1, 1), activation: lrelu)
     }
 }

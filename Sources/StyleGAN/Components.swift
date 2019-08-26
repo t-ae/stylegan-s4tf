@@ -40,9 +40,8 @@ struct Blur3x3: ParameterlessLayer {
 
 @differentiable
 func instanceNorm2D(_ x: Tensor<Float>) -> Tensor<Float> {
-    let mean = x.mean(alongAxes: 1, 2)
-    let variance = x.variance(alongAxes: 1, 2)
-    return (x - mean) * rsqrt(variance + 1e-8)
+    let moments = x.moments(alongAxes: 1, 2)
+    return (x - moments.mean) * rsqrt(moments.variance + 1e-8)
 }
 
 struct AdaIN: Layer {
@@ -92,57 +91,73 @@ struct NoiseLayer: Layer {
     }
 }
 
-struct EqualizedDense: Layer {
-    var dense: Dense<Float>
-    @noDerivative public let scale: Tensor<Float>
+public struct EqualizedDense: Layer {
+    public typealias Activation = @differentiable (Tensor<Float>) -> Tensor<Float>
     
-    init(inputSize: Int,
-         outputSize: Int,
-         activation: @escaping Dense<Float>.Activation = identity,
-         gain: Float = sqrt(2)) {
-        let weight = Tensor<Float>(randomNormal: [inputSize, outputSize])
-        let bias = Tensor<Float>(zeros: [outputSize])
-        self.dense = Dense(weight: weight, bias: bias, activation: activation)
+    public var weight: Tensor<Float>
+    public var bias: Tensor<Float>
+    
+    @noDerivative public let scale: Float
+    
+    @noDerivative public let activation: Activation
+    
+    public init(inputSize: Int,
+                outputSize: Int,
+                activation: @escaping Activation = identity,
+                gain: Float = sqrt(2)) {
+        self.weight = Tensor<Float>(randomNormal: [inputSize, outputSize])
+        self.bias = Tensor<Float>(zeros: [outputSize])
         
-        self.scale = Tensor(gain) / sqrt(Float(inputSize))
+        self.scale = gain / sqrt(Float(inputSize))
+        
+        self.activation = activation
     }
     
     @differentiable
-    func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
-        // Scale input instead of dense.weight
-        return dense(input * scale)
+    public func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+        activation(matmul(input, weight * scale) + bias)
     }
 }
 
-struct EqualizedConv2D: Layer {
-    var conv: Conv2D<Float>
-    @noDerivative public let scale: Tensor<Float>
+public struct EqualizedConv2D: Layer {
+    public typealias Activation = @differentiable (Tensor<Float>) -> Tensor<Float>
     
-    init(inputChannels: Int,
-         outputChannels: Int,
-         kernelSize: (Int, Int),
-         strides: (Int, Int) = (1, 1),
-         padding: Padding = .same,
-         activation: @escaping Conv2D<Float>.Activation = identity,
-         gain: Float = sqrt(2)) {
-        let filter = Tensor<Float>(randomNormal: [kernelSize.0,
-                                                  kernelSize.1,
-                                                  inputChannels,
-                                                  outputChannels])
-        let bias = Tensor<Float>(zeros: [outputChannels])
+    public var filter: Tensor<Float>
+    public var bias: Tensor<Float>
+    @noDerivative public let scale: Float
+    
+    @noDerivative public let strides: (Int, Int)
+    @noDerivative public let padding: Padding
+    
+    @noDerivative public let activation: Activation
+    
+    public init(inputChannels: Int,
+                outputChannels: Int,
+                kernelSize: (Int, Int),
+                strides: (Int, Int) = (1, 1),
+                padding: Padding = .same,
+                activation: @escaping Activation = identity,
+                gain: Float = sqrt(2)) {
+        self.filter = Tensor<Float>(randomNormal: [kernelSize.0,
+                                                   kernelSize.1,
+                                                   inputChannels,
+                                                   outputChannels])
+        self.bias = Tensor<Float>(zeros: [outputChannels])
         
-        self.conv = Conv2D(filter: filter,
-                           bias: bias,
-                           activation: activation,
-                           strides: strides,
-                           padding: padding)
+        self.scale = gain / sqrt(Float(inputChannels*kernelSize.0*kernelSize.1))
         
-        self.scale = Tensor(gain) / sqrt(Float(inputChannels*kernelSize.0*kernelSize.1))
+        self.strides = strides
+        self.padding = padding
+        
+        self.activation = activation
     }
     
     @differentiable
-    func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
-        // Scale input instead of conv.filter
-        return conv(input * scale)
+    public func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+        activation(conv2D(input,
+                          filter: filter * scale,
+                          strides: (1, strides.0, strides.1, 1),
+                          padding: padding,
+                          dilations: (1, 1, 1, 1)) + bias)
     }
 }

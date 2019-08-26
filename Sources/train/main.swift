@@ -96,7 +96,7 @@ for step in 1... {
     }
     print("step: \(step), alpha: \(generator.alpha)")
     
-    let level = generator.level
+    let level = generator.synthesis.level
     
     let minibatchSize = Config.minibatchSizeSchedule[level - 1]
     let imageSize = 2 * Int(powf(2, Float(level)))
@@ -121,14 +121,14 @@ for step in 1... {
         case (.fading, _):
             phase = .stabilizing
             setAlpha(1)
-            print("Start stabilizing lv: \(generator.level)")
+            print("Start stabilizing lv: \(generator.synthesis.level)")
         case (.stabilizing, Config.maxLevel):
             break
         case (.stabilizing, _):
             phase = .fading
             setAlpha(0)
             grow()
-            print("Start fading lv: \(generator.level)")
+            print("Start fading lv: \(generator.synthesis.level)")
         }
     }
     
