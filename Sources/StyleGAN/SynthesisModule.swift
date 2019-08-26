@@ -191,6 +191,10 @@ public struct SynthesisModule: Layer {
         var dict = [
             "gen\(level)/first.baseImage": firstBlock.baseImage,
             "gen\(level)/first.conv": firstBlock.conv.filter,
+            "gen\(level)/first.adain1.scale": firstBlock.adaIN1.scaleTransform.weight,
+            "gen\(level)/first.adain1.bias": firstBlock.adaIN1.biasTransform.weight,
+            "gen\(level)/first.adain2.scale": firstBlock.adaIN2.scaleTransform.weight,
+            "gen\(level)/first.adain2.bias": firstBlock.adaIN2.biasTransform.weight,
             "gen\(level)/toRGB1": toRGB1.filter,
             "gen\(level)/toRGB2": toRGB2.filter,
         ]
@@ -198,6 +202,10 @@ public struct SynthesisModule: Layer {
         for i in 0..<blocks.count {
             dict["gen\(level)/block\(i).conv1"] = blocks[i].conv1.filter
             dict["gen\(level)/block\(i).conv2"] = blocks[i].conv2.filter
+            dict["gen\(level)/block\(i).adain1.scale"] = blocks[i].adaIN1.scaleTransform.weight
+            dict["gen\(level)/block\(i).adain1.bias"] = blocks[i].adaIN1.biasTransform.bias
+            dict["gen\(level)/block\(i).adain2.scale"] = blocks[i].adaIN2.scaleTransform.weight
+            dict["gen\(level)/block\(i).adain2.bias"] = blocks[i].adaIN2.biasTransform.bias
         }
         
         return dict
