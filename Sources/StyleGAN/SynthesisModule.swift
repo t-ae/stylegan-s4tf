@@ -109,25 +109,27 @@ struct SynthesisBlock: Layer {
 
 public struct SynthesisModule: Layer {
     var firstBlock: SynthesisFirstBlock
+    var firstToRGB: EqualizedConv2D
     
     var blocks: [SynthesisBlock] = []
-    
-    var toRGB1 = EqualizedConv2D(inputChannels: 1,
-                                 outputChannels: 1,
-                                 kernelSize: (1, 1),
-                                 activation: identity,
-                                 gain: 1) // dummy at first
-    var toRGB2 = EqualizedConv2D(inputChannels: 256,
-                                 outputChannels: 3,
-                                 kernelSize: (1, 1),
-                                 activation: identity,
-                                 gain: 1)
+    var toRGBs: [EqualizedConv2D] = []
     
     @noDerivative public internal(set) var level: Int = 1
     @noDerivative public var alpha: Float = 1
     
+    static let channels = [256, 256, 256, 256, 128, 64, 32, 16]
+    
     public init() {
-        firstBlock = .init(startSize: 256, outputSize: 256)
+        let channels = Self.channels
+        firstBlock = .init(startSize: channels[0], outputSize: channels[1])
+        firstToRGB = EqualizedConv2D(inputChannels: channels[1], outputChannels: 3,
+                                     kernelSize: (1, 1), padding: .valid)
+        
+        for lv in 2...Config.maxLevel {
+            blocks.append(.init(inputSize: channels[lv-1], outputSize: channels[lv]))
+            toRGBs.append(.init(inputChannels: channels[lv], outputChannels: 3,
+                                kernelSize: (1, 1), padding: .valid, gain: 1))
+        }
     }
     
     @differentiable
@@ -138,69 +140,77 @@ public struct SynthesisModule: Layer {
         
         guard level > 1 else {
             // 常にalpha = 1
-            return toRGB2(x)
+            return firstToRGB(x)
+        }
+        guard level > 2 else {
+            let rgb1 = resize2xBilinear(images: firstToRGB(x))
+            let rgb2 = toRGBs[0](blocks[0](.init(x: x, w: w)))
+            return lerp(rgb1, rgb2, rate: alpha)
         }
         
-        for lv in 0..<level-2 {
-            x = blocks[lv](.init(x: x, w: w))
+        // Level >= 3
+        
+        // FIXME: Loop causes crash. Unroll it.
+        // https://bugs.swift.org/projects/TF/issues/TF-681
+//        for i in 0..<level-2 {
+//            x = blocks[i](.init(x: x, w: w))
+//        }
+        var i = 0
+        if i < level-2 {
+            x = blocks[i](.init(x: x, w: w))
+            i += 1
+        }
+        if i < level-2 {
+            x = blocks[i](.init(x: x, w: w))
+            i += 1
+        }
+        if i < level-2 {
+            x = blocks[i](.init(x: x, w: w))
+            i += 1
+        }
+        if i < level-2 {
+            x = blocks[i](.init(x: x, w: w))
+            i += 1
+        }
+        if i < level-2 {
+            x = blocks[i](.init(x: x, w: w))
+            i += 1
         }
         
-        var x1 = x
-        x1 = toRGB1(x1)
-        x1 = resize2xBilinear(images: x1)
+        let rgb1 = resize2xBilinear(images: toRGBs[level-3](x))
         
-        var x2 = blocks[level-2](.init(x: x, w: w))
-        x2 = toRGB2(x2)
+        x = blocks[level-2](.init(x: x, w: w))
+        let rgb2 = toRGBs[level-2](x)
         
-        return lerp(x1, x2, rate: alpha)
+        return lerp(rgb1, rgb2, rate: alpha)
     }
-    
-    static let ioChannels = [
-        (256, 256),
-        (256, 256),
-        (256, 128),
-        (128, 64),
-        (64, 32),
-        (32, 16)
-    ]
     
     public mutating func grow() {
         level += 1
         guard level <= Config.maxLevel else {
             fatalError("Generator.level exceeds Config.maxLevel")
         }
-        
-        let blockCount = blocks.count
-        let io = SynthesisModule.ioChannels[blockCount]
-        
-        blocks.append(SynthesisBlock(inputSize: io.0, outputSize: io.1))
-        toRGB1 = toRGB2
-        toRGB2 = EqualizedConv2D(inputChannels: io.1,
-                                 outputChannels: 3,
-                                 kernelSize: (1, 1),
-                                 activation: identity,
-                                 gain: 1)
     }
     
     public func getHistogramWeights() -> [String: Tensor<Float>] {
         var dict = [
-            "gen\(level)/first.baseImage": firstBlock.baseImage,
-            "gen\(level)/first.conv": firstBlock.conv.filter,
-            "gen\(level)/first.adain1.scale": firstBlock.adaIN1.scaleTransform.weight,
-            "gen\(level)/first.adain1.bias": firstBlock.adaIN1.biasTransform.weight,
-            "gen\(level)/first.adain2.scale": firstBlock.adaIN2.scaleTransform.weight,
-            "gen\(level)/first.adain2.bias": firstBlock.adaIN2.biasTransform.weight,
-            "gen\(level)/toRGB1": toRGB1.filter,
-            "gen\(level)/toRGB2": toRGB2.filter,
+            "gen/first.baseImage": firstBlock.baseImage,
+            "gen/first.conv": firstBlock.conv.filter,
+            "gen/first.adain1.scale": firstBlock.adaIN1.scaleTransform.weight,
+            "gen/first.adain1.bias": firstBlock.adaIN1.biasTransform.weight,
+            "gen/first.adain2.scale": firstBlock.adaIN2.scaleTransform.weight,
+            "gen/first.adain2.bias": firstBlock.adaIN2.biasTransform.weight,
+            "gen/first.toRGB": firstToRGB.filter,
         ]
         
-        for i in 0..<blocks.count {
-            dict["gen\(level)/block\(i).conv1"] = blocks[i].conv1.filter
-            dict["gen\(level)/block\(i).conv2"] = blocks[i].conv2.filter
-            dict["gen\(level)/block\(i).adain1.scale"] = blocks[i].adaIN1.scaleTransform.weight
-            dict["gen\(level)/block\(i).adain1.bias"] = blocks[i].adaIN1.biasTransform.bias
-            dict["gen\(level)/block\(i).adain2.scale"] = blocks[i].adaIN2.scaleTransform.weight
-            dict["gen\(level)/block\(i).adain2.bias"] = blocks[i].adaIN2.biasTransform.bias
+        for i in 0..<level-1 {
+            dict["gen/block\(i).conv1"] = blocks[i].conv1.filter
+            dict["gen/block\(i).conv2"] = blocks[i].conv2.filter
+            dict["gen/block\(i).adain1.scale"] = blocks[i].adaIN1.scaleTransform.weight
+            dict["gen/block\(i).adain1.bias"] = blocks[i].adaIN1.biasTransform.bias
+            dict["gen/block\(i).adain2.scale"] = blocks[i].adaIN2.scaleTransform.weight
+            dict["gen/block\(i).adain2.bias"] = blocks[i].adaIN2.biasTransform.bias
+            dict["gen/block\(i).toRGB"] = toRGBs[i].filter
         }
         
         return dict
