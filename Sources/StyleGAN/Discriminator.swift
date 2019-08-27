@@ -16,13 +16,12 @@ func avgPool(_ x: Tensor<Float>) -> Tensor<Float> {
     avgPool2D(x, filterSize: (1, 2, 2, 1), strides: (1, 2, 2, 1), padding: .valid)
 }
 
-struct DBlockInput: Differentiable {
-    var x: Tensor<Float>
-    @noDerivative
-    var noiseScale: Float
-}
-
 struct DBlock: Layer {
+    struct Input: Differentiable {
+        var x: Tensor<Float>
+        @noDerivative
+        var noiseScale: Float
+    }
     var conv1: EqualizedConv2D
     var conv2: EqualizedConv2D
     
@@ -45,7 +44,7 @@ struct DBlock: Layer {
     }
     
     @differentiable
-    func callAsFunction(_ input: DBlockInput) -> Tensor<Float> {
+    func callAsFunction(_ input: Input) -> Tensor<Float> {
         var x = input.x
         x = addNoise(x, noiseScale: input.noiseScale)
         x = conv1(x)
@@ -62,6 +61,11 @@ struct DBlock: Layer {
 }
 
 struct DLastBlock: Layer {
+    struct Input: Differentiable {
+        var x: Tensor<Float>
+        @noDerivative
+        var noiseScale: Float
+    }
     var conv1: EqualizedConv2D
     var conv2: EqualizedConv2D
     var dense: EqualizedDense
@@ -84,7 +88,7 @@ struct DLastBlock: Layer {
     }
     
     @differentiable
-    public func callAsFunction(_ input: DBlockInput) -> Tensor<Float> {
+    public func callAsFunction(_ input: Input) -> Tensor<Float> {
         var x = input.x
         let batchSize = x.shape[0]
         x = addNoise(x, noiseScale: input.noiseScale)
@@ -99,12 +103,14 @@ struct DLastBlock: Layer {
 
 public struct Discriminator: Layer {
     
+    static let channels = [1, 256, 256, 256, 128, 64, 32, 16]
+    
     var lastBlock = DLastBlock()
+    var lastFromRGB = EqualizedConv2D(inputChannels: 3, outputChannels: channels[1],
+                                      kernelSize: (1, 1), padding: .valid, activation: lrelu)
     
     var blocks: [DBlock] = []
-    
-    var fromRGB1 = EqualizedConv2D(inputChannels: 1, outputChannels: 1, kernelSize: (1, 1), activation: lrelu) // dummy at first
-    var fromRGB2 = EqualizedConv2D(inputChannels: 3, outputChannels: 256, kernelSize: (1, 1), activation: lrelu)
+    var fromRGBs: [EqualizedConv2D] = []
     
     @noDerivative
     public private(set) var level = 1
@@ -115,7 +121,13 @@ public struct Discriminator: Layer {
     @noDerivative
     public let outputMean: Parameter<Float> = Parameter(Tensor(0))
     
-    public init() {}
+    public init() {
+        let channels = Self.channels
+        for lv in 2...Config.maxLevel {
+            fromRGBs.append(.init(inputChannels: 3, outputChannels: channels[lv], kernelSize: (1, 1), padding: .valid, activation: lrelu))
+            blocks.append(.init(inputChannels: channels[lv], outputChannels: channels[lv-1]))
+        }
+    }
     
     @differentiable
     public func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
@@ -130,46 +142,60 @@ public struct Discriminator: Layer {
         
         guard level > 1 else {
             // alpha = 1
-            return lastBlock(DBlockInput(x: fromRGB2(input), noiseScale: noiseScale))
+            let x = lastFromRGB(input)
+            return lastBlock(.init(x: x, noiseScale: noiseScale))
+        }
+        guard level > 2 else {
+            let x1 = lastFromRGB(avgPool(input))
+            var x2 = fromRGBs[0](input)
+            x2 = blocks[0](.init(x: x2, noiseScale: noiseScale))
+            let x = lerp(x1, x2, rate: alpha)
+            return lastBlock(.init(x: x, noiseScale: noiseScale))
         }
         
-        let x1 = fromRGB1(avgPool(input))
-        var x2 = fromRGB2(input)
+        // Level >= 3
         
-        let lastIndex = level-2
-        x2 = blocks[lastIndex](DBlockInput(x: x2, noiseScale: noiseScale))
+        let x1 = fromRGBs[level-3](avgPool(input))
+        var x2 = fromRGBs[level-2](input)
+        x2 = blocks[level-2](.init(x: x2, noiseScale: noiseScale))
         
         var x = lerp(x1, x2, rate: alpha)
         
-        for l in (0..<lastIndex).reversed() {
-            x = blocks[l](DBlockInput(x: x, noiseScale: noiseScale))
+        // FIXME: Loop has problem. Unroll it.
+        // https://bugs.swift.org/projects/TF/issues/TF-681
+//        for i in (0..<level-2).reversed() {
+//            x = blocks[i](.init(x: x, noiseScale: noiseScale))
+//        }
+        var i = level-3
+        if i >= 0 {
+            x = blocks[i](.init(x: x, noiseScale: noiseScale))
+            i -= 1
+        }
+        if i >= 0 {
+            x = blocks[i](.init(x: x, noiseScale: noiseScale))
+            i -= 1
+        }
+        if i >= 0 {
+            x = blocks[i](.init(x: x, noiseScale: noiseScale))
+            i -= 1
+        }
+        if i >= 0 {
+            x = blocks[i](.init(x: x, noiseScale: noiseScale))
+            i -= 1
+        }
+        if i >= 0 {
+            x = blocks[i](.init(x: x, noiseScale: noiseScale))
+            i -= 1
         }
         
-        return lastBlock(DBlockInput(x: x, noiseScale: noiseScale))
+        return lastBlock(.init(x: x, noiseScale: noiseScale))
     }
-    
-    static let ioChannels = [
-        (256, 256),
-        (256, 256),
-        (128, 256),
-        (64, 128),
-        (32, 64),
-        (16, 32),
-    ]
     
     public mutating func grow() {
         level += 1
         guard level <= Config.maxLevel else {
-            fatalError("Generator.level exceeds Config.maxLevel")
+            fatalError("Discriminator.level exceeds Config.maxLevel")
         }
-        
-        let blockCount = blocks.count
-        let io = Discriminator.ioChannels[blockCount]
-        
-        blocks.append(DBlock(inputChannels: io.0,outputChannels: io.1))
-        
-        fromRGB1 = fromRGB2
-        fromRGB2 = EqualizedConv2D(inputChannels: 3, outputChannels: io.0, kernelSize: (1, 1), activation: lrelu)
     }
     
     public func getHistogramWeights() -> [String: Tensor<Float>] {
@@ -177,13 +203,13 @@ public struct Discriminator: Layer {
             "disc\(level)/last.conv1": lastBlock.conv1.filter,
             "disc\(level)/last.conv2": lastBlock.conv2.filter,
             "disc\(level)/last.dense": lastBlock.dense.weight,
-            "disc\(level)/fromRGB1": fromRGB1.filter,
-            "disc\(level)/fromRGB2": fromRGB2.filter,
+            "disc\(level)/last.fromRGB": lastFromRGB.filter,
         ]
         
         for i in 0..<blocks.count {
             dict["disc\(level)/block\(i).conv1"] = blocks[i].conv1.filter
             dict["disc\(level)/block\(i).conv2"] = blocks[i].conv2.filter
+            dict["disc\(level)/block\(i).fromRGB"] = fromRGBs[i].filter
         }
         
         return dict
