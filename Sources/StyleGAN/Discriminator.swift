@@ -11,7 +11,12 @@ func addNoise(_ x: Tensor<Float>, noiseScale: Float) -> Tensor<Float> {
     return x * noise
 }
 
-struct DiscriminatorBlockInput: Differentiable {
+@differentiable
+func avgPool(_ x: Tensor<Float>) -> Tensor<Float> {
+    avgPool2D(x, filterSize: (1, 2, 2, 1), strides: (1, 2, 2, 1), padding: .valid)
+}
+
+struct DBlockInput: Differentiable {
     var x: Tensor<Float>
     @noDerivative
     var noiseScale: Float
@@ -20,8 +25,6 @@ struct DiscriminatorBlockInput: Differentiable {
 struct DBlock: Layer {
     var conv1: EqualizedConv2D
     var conv2: EqualizedConv2D
-    
-    var avgPool = AvgPool2D<Float>(poolSize: (2, 2), strides: (2, 2))
     
     @noDerivative
     let blur: Blur3x3
@@ -42,7 +45,7 @@ struct DBlock: Layer {
     }
     
     @differentiable
-    func callAsFunction(_ input: DiscriminatorBlockInput) -> Tensor<Float> {
+    func callAsFunction(_ input: DBlockInput) -> Tensor<Float> {
         var x = input.x
         x = addNoise(x, noiseScale: input.noiseScale)
         x = conv1(x)
@@ -81,7 +84,7 @@ struct DLastBlock: Layer {
     }
     
     @differentiable
-    public func callAsFunction(_ input: DiscriminatorBlockInput) -> Tensor<Float> {
+    public func callAsFunction(_ input: DBlockInput) -> Tensor<Float> {
         var x = input.x
         let batchSize = x.shape[0]
         x = addNoise(x, noiseScale: input.noiseScale)
@@ -102,8 +105,6 @@ public struct Discriminator: Layer {
     
     var fromRGB1 = EqualizedConv2D(inputChannels: 1, outputChannels: 1, kernelSize: (1, 1), activation: lrelu) // dummy at first
     var fromRGB2 = EqualizedConv2D(inputChannels: 3, outputChannels: 256, kernelSize: (1, 1), activation: lrelu)
-    
-    var downsample = AvgPool2D<Float>(poolSize: (2, 2), strides: (2, 2))
     
     @noDerivative
     public private(set) var level = 1
@@ -129,22 +130,22 @@ public struct Discriminator: Layer {
         
         guard level > 1 else {
             // alpha = 1
-            return lastBlock(DiscriminatorBlockInput(x: fromRGB2(input), noiseScale: noiseScale))
+            return lastBlock(DBlockInput(x: fromRGB2(input), noiseScale: noiseScale))
         }
         
-        let x1 = fromRGB1(downsample(input))
+        let x1 = fromRGB1(avgPool(input))
         var x2 = fromRGB2(input)
         
         let lastIndex = level-2
-        x2 = blocks[lastIndex](DiscriminatorBlockInput(x: x2, noiseScale: noiseScale))
+        x2 = blocks[lastIndex](DBlockInput(x: x2, noiseScale: noiseScale))
         
         var x = lerp(x1, x2, rate: alpha)
         
         for l in (0..<lastIndex).reversed() {
-            x = blocks[l](DiscriminatorBlockInput(x: x, noiseScale: noiseScale))
+            x = blocks[l](DBlockInput(x: x, noiseScale: noiseScale))
         }
         
-        return lastBlock(DiscriminatorBlockInput(x: x, noiseScale: noiseScale))
+        return lastBlock(DBlockInput(x: x, noiseScale: noiseScale))
     }
     
     static let ioChannels = [

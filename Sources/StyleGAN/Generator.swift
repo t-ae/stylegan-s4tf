@@ -5,9 +5,6 @@ public struct Generator: Layer {
     public var mapping = MappingModule()
     public var synthesis = SynthesisModule()
     
-    @noDerivative let wAverageBeta: Float = 0.995
-    @noDerivative var wAverage: Parameter<Float>
-    
     public var alpha: Float {
         get {
             synthesis.alpha
@@ -18,58 +15,12 @@ public struct Generator: Layer {
     }
     
     public init() {
-        wAverage = Parameter(Tensor(zeros: [1, Config.wsize]))
     }
     
     @differentiable
     public func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
         let w = mapping(input)
-        
-        let ws = createWs(w: w)
-        
-        return synthesis(ws)
-    }
-    
-    @differentiable
-    func createWs(w: Tensor<Float>) -> Tensor<Float> {
-        let level = withoutDerivative(at: synthesis.level)
-        
-        let batchSize = w.shape[0]
-        let training = Context.local.learningPhase == .training
-        let cutoffRange = training.and(Float.random(in: 0..<1) < 0.9)
-            ? 1...level*2 : level*2...level*2
-        
-        // Update wAverage
-        if training {
-            wAverage.value = lerp(w.mean(alongAxes: 0), wAverage.value, rate: wAverageBeta)
-        }
-        
-        // Style mixing
-        let z2 = sampleNoise(size: batchSize)
-        let w2 = mapping(z2)
-        
-        var mask = Tensor<Int32>(zeros: [level*2, batchSize, 1])
-        for batch in 0..<batchSize {
-            let cutoff = Int.random(in: cutoffRange)
-            let size = level*2 - cutoff
-            mask[cutoff..., batch] = Tensor(ones: [size, 1])
-        }
-        // [level*2, batchSize, wsize]
-        var mixed = Tensor<Float>(1 - mask) * w + Tensor<Float>(mask) * w2
-        
-        // truncation trick
-        if !training {
-            let psi: Float = 0.7
-            if mixed.shape[0] > 8 {
-                var rates = Tensor<Float>(zeros: mixed.shape)
-                rates[8...] *= 1-psi
-
-                mixed = mixed * (1-rates)
-                mixed = mixed + rates * wAverage.value
-            }
-        }
-        
-        return mixed.reshaped(to: [level, 2, batchSize, Config.wsize])
+        return synthesis(w)
     }
     
     public mutating func grow() {

@@ -27,21 +27,20 @@ struct SynthesisFirstBlock: Layer {
     
     @differentiable
     func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
-        // input: [2, batchSize, wsize]
-        let batchSize = input.shape[1]
+        let batchSize = input.shape[0]
         var x = baseImage.tiled(multiples: Tensor<Int32>([Int32(batchSize), 1, 1, 1]))
         if Config.useNoise {
             x = noise1(x)
         }
         x = lrelu(x)
-        x = adaIN1(AdaIN.makeInput(x: x, w: input[0]))
+        x = adaIN1(AdaIN.makeInput(x: x, w: input))
         
         x = conv(x)
         if Config.useNoise {
             x = noise2(x)
         }
         x = lrelu(x)
-        x = adaIN2(AdaIN.makeInput(x: x, w: input[1]))
+        x = adaIN2(AdaIN.makeInput(x: x, w: input))
         
         return x
     }
@@ -50,7 +49,7 @@ struct SynthesisFirstBlock: Layer {
 struct SynthesisBlock: Layer {
     struct Input: Differentiable {
         var x: Tensor<Float>
-        var ws: Tensor<Float> // [2, batchSize, wsize]
+        var w: Tensor<Float>
     }
     
     var conv1: EqualizedConv2D
@@ -95,14 +94,14 @@ struct SynthesisBlock: Layer {
             x = noise1(x)
         }
         x = lrelu(x)
-        x = adaIN1(AdaIN.makeInput(x: x, w: input.ws[0]))
+        x = adaIN1(AdaIN.makeInput(x: x, w: input.w))
         
         x = conv2(x)
         if Config.useNoise {
             x = noise2(x)
         }
         x = lrelu(x)
-        x = adaIN2(AdaIN.makeInput(x: x, w: input.ws[1]))
+        x = adaIN2(AdaIN.makeInput(x: x, w: input.w))
         
         return x
     }
@@ -133,10 +132,9 @@ public struct SynthesisModule: Layer {
     
     @differentiable
     public func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
-        // ws: [level, 2, batchSize, wsize]
-        let ws = input
+        let w = input
         
-        var x = firstBlock(ws[0])
+        var x = firstBlock(w)
         
         guard level > 1 else {
             // 常にalpha = 1
@@ -144,14 +142,14 @@ public struct SynthesisModule: Layer {
         }
         
         for lv in 0..<level-2 {
-            x = blocks[lv](.init(x: x, ws: ws[0]))
+            x = blocks[lv](.init(x: x, w: w))
         }
         
         var x1 = x
         x1 = toRGB1(x1)
         x1 = resize2xBilinear(images: x1)
         
-        var x2 = blocks[level-2](.init(x: x, ws: ws[0]))
+        var x2 = blocks[level-2](.init(x: x, w: w))
         x2 = toRGB2(x2)
         
         return lerp(x1, x2, rate: alpha)
