@@ -4,7 +4,7 @@ import Swim
 
 class ImageLoader {
     var imageDirectory: URL
-    var fileNames: [String]
+    var urls: [URL]
     
     var index = 0
     
@@ -14,13 +14,25 @@ class ImageLoader {
     
     init(imageDirectory: URL, multiThread: Bool = true) throws {
         self.imageDirectory = imageDirectory
-        fileNames = try FileManager.default.contentsOfDirectory(atPath: imageDirectory.path)
-            .filter { $0.hasSuffix(".png") }
+        
+        let enumerator = FileManager.default.enumerator(at: imageDirectory, includingPropertiesForKeys: nil)!
+        var urls: [URL] = []
+        for entry in enumerator {
+            guard let url = entry as? URL else {
+                continue
+            }
+            guard url.pathExtension == "png" else {
+                continue
+            }
+            urls.append(url)
+        }
+        self.urls = urls
+        
         self.multiThread = multiThread
     }
     
     func shuffle() {
-        fileNames.shuffle()
+        urls.shuffle()
     }
     
     func resetIndex() {
@@ -28,20 +40,19 @@ class ImageLoader {
     }
     
     func minibatch(size: Int, imageSize: (height: Int, width: Int)) -> Tensor<Float> {
-        if fileNames.count >= index+size {
+        if urls.count < index+size {
             resetIndex()
             shuffle()
         }
         
         var tensors: [Tensor<Float>]
-        let fileNames = self.fileNames[index..<index+size]
-        
-        index += size
+        let urls = self.urls[index..<index+size]
+        defer { index += size }
         
         if multiThread {
             tensors = []
             DispatchQueue.concurrentPerform(iterations: size) { i in
-                let url = imageDirectory.appendingPathComponent(fileNames[i])
+                let url = urls[i+index]
                 let image = try! Image<RGB, Float>(contentsOf: url)
                 let resized = image.resize(width: imageSize.width, height: imageSize.height)
                 
@@ -51,10 +62,9 @@ class ImageLoader {
                 }
             }
         } else {
-            let images = fileNames.map { fileName -> Image<RGB, Float> in
-                let url = imageDirectory.appendingPathComponent(fileName)
+            let images = urls.map { url -> Image<RGB, Float> in
                 let image = try! Image<RGB, Float>(contentsOf: url)
-                return image.resize(width: imageSize.width, height: imageSize.height)
+                return image.resize(width: imageSize.width, height: imageSize.height, method: .areaAverage)
             }
             tensors = images.map { image in
                 image.withUnsafeBufferPointer { bp in
