@@ -200,16 +200,16 @@ public struct Discriminator: Layer {
     
     public func getHistogramWeights() -> [String: Tensor<Float>] {
         var dict = [
-            "disc\(level)/last.conv1": lastBlock.conv1.filter,
-            "disc\(level)/last.conv2": lastBlock.conv2.filter,
-            "disc\(level)/last.dense": lastBlock.dense.weight,
-            "disc\(level)/last.fromRGB": lastFromRGB.filter,
+            "disc/last.conv1": lastBlock.conv1.filter,
+            "disc/last.conv2": lastBlock.conv2.filter,
+            "disc/last.dense": lastBlock.dense.weight,
+            "disc/last.fromRGB": lastFromRGB.filter,
         ]
         
-        for i in 0..<blocks.count {
-            dict["disc\(level)/block\(i).conv1"] = blocks[i].conv1.filter
-            dict["disc\(level)/block\(i).conv2"] = blocks[i].conv2.filter
-            dict["disc\(level)/block\(i).fromRGB"] = fromRGBs[i].filter
+        for i in 0..<level-1 {
+            dict["disc/block\(i).conv1"] = blocks[i].conv1.filter
+            dict["disc/block\(i).conv2"] = blocks[i].conv2.filter
+            dict["disc/block\(i).fromRGB"] = fromRGBs[i].filter
         }
         
         return dict
