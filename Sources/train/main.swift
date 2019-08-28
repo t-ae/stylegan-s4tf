@@ -156,7 +156,7 @@ for step in 1... {
             grow()
             print("Start fading lv: \(generator.synthesis.level)")
             
-            infer(level: level, step: step)
+            infer(level: level+1, step: step)
             addHistograms(step: step)
         }
     }

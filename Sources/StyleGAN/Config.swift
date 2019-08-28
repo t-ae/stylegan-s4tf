@@ -30,7 +30,7 @@ public enum Config {
     public static let imageDirectory = URL(fileURLWithPath: "./images")
     public static let tensorboardOutputDirectory = URL(fileURLWithPath: "./tensorboard")
     
-    public static let numStepsToInfer = 3_000
+    public static let numStepsToInfer = 5_000
     
     public static let debugPrint = false
 }
