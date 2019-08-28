@@ -140,6 +140,7 @@ for step in 1... {
     
     imageCount += minibatchSize
     
+    var shouldInfer = step.isMultiple(of: Config.numStepsToInfer)
     if imageCount >= Config.numImagesPerPhase {
         imageCount = 0
         
@@ -155,13 +156,12 @@ for step in 1... {
             setAlpha(0)
             grow()
             print("Start fading lv: \(generator.synthesis.level)")
-            
-            infer(level: level+1, step: step)
-            addHistograms(step: step)
+            shouldInfer = true
         }
     }
     
-    if step.isMultiple(of: Config.numStepsToInfer) {
+    if shouldInfer {
+        let level = generator.synthesis.level
         infer(level: level, step: step)
         addHistograms(step: step)
     }
