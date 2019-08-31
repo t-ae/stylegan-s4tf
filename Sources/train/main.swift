@@ -10,9 +10,9 @@ let writer = SummaryWriter(logdir: Config.tensorboardOutputDirectory, flushSecs:
 func plotImage(tag: String, images: Tensor<Float>, rows: Int, cols: Int, step: Int) {
     var images = images.padded(forSizes: [(0, 0), (1, 1), (1, 1), (0, 0)], with: 0)
     let (height, width) = (images.shape[1], images.shape[2])
-    images = images.reshaped(to: [8, 8, height, width, 3])
+    images = images.reshaped(to: [rows, cols, height, width, 3])
     images = images.transposed(withPermutations: [0, 2, 1, 3, 4])
-    images = images.reshaped(to: [8*height, 8*width, 3])
+    images = images.reshaped(to: [rows*height, cols*width, 3])
     
     // [0, 1] range
     images = (images + 1) / 2
@@ -77,15 +77,19 @@ func train(minibatch: Tensor<Float>, step: Int) -> (lossG: Tensor<Float>, lossD:
     }
     
     if lossG.scalarized() > 10 || lossD.scalarized() > 10 {
-        // got large loss
+        // Occasionally gets too large loss in early steps.
+        // Don't train then.
+        print("skip training")
+        // record large loss images for debugging
         plotImage(tag: "Large_loss/real", images: minibatch, rows: 4, cols: minibatchSize/4, step: step)
+        plotImage(tag: "Large_loss/fake", images: fakeImages, rows: 4, cols: minibatchSize/4, step: step)
+    } else {
+        // Update
+        optMap.update(&generator.mapping, along: 𝛁generator.mapping)
+        optSynth.update(&generator.synthesis, along: 𝛁generator.synthesis)
+        optDis.update(&discriminator, along: 𝛁discriminator)
     }
-
-    // Update
-    optMap.update(&generator.mapping, along: 𝛁generator.mapping)
-    optSynth.update(&generator.synthesis, along: 𝛁generator.synthesis)
-    optDis.update(&discriminator, along: 𝛁discriminator)
-
+    
     return (lossG, lossD)
 }
 

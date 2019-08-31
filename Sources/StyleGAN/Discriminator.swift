@@ -135,7 +135,7 @@ public struct Discriminator: Layer {
         // Described in Appendix B of ProGAN paper
         let noiseScale: Float
         if Config.loss == .lsgan {
-            noiseScale = 0.2 * pow(max(outputMean.value.scalarized() - 0.5, 0), 2)
+            noiseScale = 0.2 * pow(max(min(outputMean.value.scalarized(), 1) - 0.5, 0), 2)
         } else {
             noiseScale = 0
         }
