@@ -117,7 +117,6 @@ for step in 1... {
     if phase == .fading {
         setAlpha(Float(imageCount) / Float(Config.numImagesPerPhase))
     }
-    print("step: \(step), alpha: \(generator.alpha)")
     
     let level = generator.synthesis.level
     
@@ -131,6 +130,8 @@ for step in 1... {
     let (lossG, lossD) = measureTime(label: "train") {
         train(minibatch: minibatch)
     }
+
+    print("step: \(step), alpha: \(generator.alpha), g: \(lossG), d: \(lossD)")
     
     writer.addScalar(tag: "lv\(level)/lossG", scalar: lossG.scalar!, globalStep: step)
     writer.addScalar(tag: "lv\(level)/lossD", scalar: lossD.scalar!, globalStep: step)
