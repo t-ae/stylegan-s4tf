@@ -79,10 +79,10 @@ func train(minibatch: Tensor<Float>, step: Int) -> (lossG: Tensor<Float>, lossD:
     if lossG.scalarized() > 10 || lossD.scalarized() > 10 {
         // Occasionally gets too large loss in early steps.
         // Don't train then.
-        print("skip training")
+        print("skip updating")
         // record large loss images for debugging
-        plotImage(tag: "Large_loss/real", images: minibatch, rows: 4, cols: minibatchSize/4, step: step)
-        plotImage(tag: "Large_loss/fake", images: fakeImages, rows: 4, cols: minibatchSize/4, step: step)
+        plotImage(tag: "large_loss/real", images: minibatch, rows: 4, cols: minibatchSize/4, step: step)
+        plotImage(tag: "large_loss/fake", images: fakeImages, rows: 4, cols: minibatchSize/4, step: step)
     } else {
         // Update
         optMap.update(&generator.mapping, along: 𝛁generator.mapping)
