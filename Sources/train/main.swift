@@ -32,9 +32,9 @@ let loss = Config.loss.createLoss()
 func train(minibatch: Tensor<Float>) -> (lossG: Tensor<Float>, lossD: Tensor<Float>){
     Context.local.learningPhase = .training
     let minibatchSize = minibatch.shape[0]
-    // Update generator
-    let noise1 = sampleNoise(size: minibatchSize)
     
+    // Differentiate generator
+    let noise1 = sampleNoise(size: minibatchSize)
     let (lossG, 𝛁generator) = generator.valueWithGradient { generator ->Tensor<Float> in
         let images = generator(noise1)
         let scores = discriminator(images)
@@ -45,11 +45,8 @@ func train(minibatch: Tensor<Float>) -> (lossG: Tensor<Float>, lossD: Tensor<Flo
         
         return loss.generatorLoss(fake: scores)
     }
-    optMap.update(&generator.mapping, along: 𝛁generator.mapping)
-    optSynth.update(&generator.synthesis, along: 𝛁generator.synthesis)
     
-    
-    // Update discriminator
+    // Differentiate discriminator
     let noise2 = sampleNoise(size: minibatchSize)
     let fakeImages = generator(noise2)
     let (lossD, 𝛁discriminator) = discriminator.valueWithGradient { discriminator -> Tensor<Float> in
@@ -61,6 +58,10 @@ func train(minibatch: Tensor<Float>) -> (lossG: Tensor<Float>, lossD: Tensor<Flo
         
         return loss.discriminatorLoss(real: realScores, fake: fakeScores)
     }
+
+    // Update
+    optMap.update(&generator.mapping, along: 𝛁generator.mapping)
+    optSynth.update(&generator.synthesis, along: 𝛁generator.synthesis)
     optDis.update(&discriminator, along: 𝛁discriminator)
 
     return (lossG, lossD)
