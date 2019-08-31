@@ -4,6 +4,23 @@ import TensorFlow
 import TensorBoardX
 import StyleGAN
 
+// Plot
+let writer = SummaryWriter(logdir: Config.tensorboardOutputDirectory, flushSecs: 10)
+
+func plotImage(tag: String, images: Tensor<Float>, rows: Int, cols: Int, step: Int) {
+    var images = images.padded(forSizes: [(0, 0), (1, 1), (1, 1), (0, 0)], with: 0)
+    let (height, width) = (images.shape[1], images.shape[2])
+    images = images.reshaped(to: [8, 8, height, width, 3])
+    images = images.transposed(withPermutations: [0, 2, 1, 3, 4])
+    images = images.reshaped(to: [8*height, 8*width, 3])
+    
+    // [0, 1] range
+    images = (images + 1) / 2
+    images = images.clipped(min: Tensor(0), max: Tensor(1))
+    
+    writer.addImage(tag: tag, image: images, globalStep: step)
+}
+
 var generator = Generator()
 var discriminator = Discriminator()
 
@@ -30,14 +47,14 @@ print("image count: \(imageLoader.urls.count)")
 
 let loss = Config.loss.createLoss()
 
-func train(minibatch: Tensor<Float>) -> (lossG: Tensor<Float>, lossD: Tensor<Float>){
+func train(minibatch: Tensor<Float>, step: Int) -> (lossG: Tensor<Float>, lossD: Tensor<Float>){
     Context.local.learningPhase = .training
     let minibatchSize = minibatch.shape[0]
     
     // Differentiate generator
-    let noise1 = sampleNoise(size: minibatchSize)
+    let noise = sampleNoise(size: minibatchSize)
     let (lossG, 𝛁generator) = generator.valueWithGradient { generator ->Tensor<Float> in
-        let images = generator(noise1)
+        let images = generator(noise)
         let scores = discriminator(images)
         
         // update output mean
@@ -48,8 +65,7 @@ func train(minibatch: Tensor<Float>) -> (lossG: Tensor<Float>, lossD: Tensor<Flo
     }
     
     // Differentiate discriminator
-    let noise2 = sampleNoise(size: minibatchSize)
-    let fakeImages = generator(noise2)
+    let fakeImages = generator(noise)
     let (lossD, 𝛁discriminator) = discriminator.valueWithGradient { discriminator -> Tensor<Float> in
         let realScores = discriminator(minibatch)
         let fakeScores = discriminator(fakeImages)
@@ -58,6 +74,11 @@ func train(minibatch: Tensor<Float>) -> (lossG: Tensor<Float>, lossD: Tensor<Flo
         discriminator.outputMean.value = 0.9*discriminator.outputMean.value + 0.1*fakeScores.mean()
         
         return loss.discriminatorLoss(real: realScores, fake: fakeScores)
+    }
+    
+    if lossG.scalarized() > 10 || lossD.scalarized() > 10 {
+        // got large loss
+        plotImage(tag: "Large_loss/real", images: minibatch, rows: 4, cols: minibatchSize/4, step: step)
     }
 
     // Update
@@ -68,27 +89,14 @@ func train(minibatch: Tensor<Float>) -> (lossG: Tensor<Float>, lossD: Tensor<Flo
     return (lossG, lossD)
 }
 
-// Plot
-let writer = SummaryWriter(logdir: Config.tensorboardOutputDirectory, flushSecs: 10)
-
 // Test
 let testNoise = sampleNoise(size: 64)
 func infer(level: Int, step: Int) {
     print("infer...")
     Context.local.learningPhase = .inference
     
-    var images = generator(testNoise)
-    images = images.padded(forSizes: [(0, 0), (1, 1), (1, 1), (0, 0)], with: 0)
-    let (height, width) = (images.shape[1], images.shape[2])
-    images = images.reshaped(to: [8, 8, height, width, 3])
-    images = images.transposed(withPermutations: [0, 2, 1, 3, 4])
-    images = images.reshaped(to: [8*height, 8*width, 3])
-    
-    // [0, 1] range
-    images = (images + 1) / 2
-    images = images.clipped(min: Tensor(0), max: Tensor(1))
-    
-    writer.addImage(tag: "lv\(level)", image: images, globalStep: step)
+    let images = generator(testNoise)
+    plotImage(tag: "lv\(level)", images: images, rows: 8, cols: 8, step: step)
 }
 
 func addHistograms(step: Int) {
@@ -130,7 +138,7 @@ for step in 1... {
     }
     
     let (lossG, lossD) = measureTime(label: "train") {
-        train(minibatch: minibatch)
+        train(minibatch: minibatch, step: step)
     }
 
     print("step: \(step), alpha: \(generator.alpha), g: \(lossG), d: \(lossD)")
