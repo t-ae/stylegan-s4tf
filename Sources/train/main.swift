@@ -26,6 +26,7 @@ func setAlpha(_ alpha: Float) {
 }
 
 let imageLoader = try ImageLoader(imageDirectory: Config.imageDirectory)
+print("image count: \(imageLoader.urls.count)")
 
 let loss = Config.loss.createLoss()
 
