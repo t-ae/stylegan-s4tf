@@ -8,11 +8,14 @@ class ImageLoader {
     
     var index = 0
     
+    var flip: Bool
     var multiThread: Bool
     
     let appendQueue = DispatchQueue(label: "ImageLoader.appendQueue")
     
-    init(imageDirectory: URL, multiThread: Bool = true) throws {
+    init(imageDirectory: URL,
+         flip: Bool = true,
+         multiThread: Bool = true) throws {
         self.imageDirectory = imageDirectory
         
         let enumerator = FileManager.default.enumerator(at: imageDirectory, includingPropertiesForKeys: nil)!
@@ -28,6 +31,7 @@ class ImageLoader {
         }
         self.urls = urls
         
+        self.flip = flip
         self.multiThread = multiThread
     }
     
@@ -53,7 +57,10 @@ class ImageLoader {
             tensors = []
             DispatchQueue.concurrentPerform(iterations: size) { i in
                 let url = urls[i+index]
-                let image = try! Image<RGB, Float>(contentsOf: url)
+                var image = try! Image<RGB, Float>(contentsOf: url)
+                if flip && Bool.random() {
+                    image = image.flipLR()
+                }
                 let resized = image.resize(width: imageSize.width, height: imageSize.height)
                 
                 let tensor = Tensor<Float>(resized.getData())
@@ -63,7 +70,10 @@ class ImageLoader {
             }
         } else {
             let images = urls.map { url -> Image<RGB, Float> in
-                let image = try! Image<RGB, Float>(contentsOf: url)
+                var image = try! Image<RGB, Float>(contentsOf: url)
+                if flip && Bool.random() {
+                    image = image.flipLR()
+                }
                 return image.resize(width: imageSize.width, height: imageSize.height, method: .areaAverage)
             }
             tensors = images.map { image in
