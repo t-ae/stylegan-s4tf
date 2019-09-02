@@ -67,7 +67,7 @@ struct AdaIN: Layer {
         return x * (scale + 1) + bias
     }
     
-    // Directly calling `Input.init` has problem?
+    // FIXME: Workaround for https://bugs.swift.org/browse/TF-21
     @differentiable
     static func makeInput(x: Tensor<Float>, w: Tensor<Float>) -> Input {
         Input(x: x, w: w)
